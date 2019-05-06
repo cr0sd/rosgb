@@ -23,6 +23,7 @@ extern void romhexdump(uint8_t*);
 extern uint32_t openwindow(uint8_t*);
 extern uint32_t updatewindow(uint8_t*);
 extern uint32_t closewindow();
+extern uint32_t updatejoypad(uint8_t*);
 #endif
 int main(int c,char **v)
 {
@@ -84,9 +85,13 @@ int main(int c,char **v)
 	// for(int i=0;i<70&&((st[10]|st[11]<<8)<romsize);i++)
 	for(;;)
 	{
+		updatejoypad(ram);
+		ram[0xff44]=0x90;
+		
 		printf("\n[%#10.8x]%#5.2x: ",st[10]|st[11]<<8,rom[st[10]|st[11]<<8]);
 		fetch8(st,rom,&op,ram);
 		decexec(st,rom,&op,ram);
+		
 		#ifdef VIDEO
 		if(updatewindow(ram))break;
 		#endif

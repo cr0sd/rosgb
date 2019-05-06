@@ -17,6 +17,9 @@ typedef struct St //cpu state
 	uint8_t a,f,b,c,d,e,h,l; //regs signed, flags unsigned
 	uint16_t sp,pc;
 }St;
+
+extern void decexecCB(St*,uint8_t*,uint8_t*,uint8_t*);
+
 void fetch8(St *st,uint8_t *rom,uint8_t *u8,uint8_t *ram)
 {
 	*u8=rom[st->pc++];
@@ -451,7 +454,7 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0x46://ld b,(hl)
 		tmp=st->h<<8|st->l;
 		st->b=ram[tmp];
-		printf("ld b,(hl) ;ld %.2xh,(%.4xh)",st->b,tmp);
+		printf("ld b,(hl)");
 		break;
 	case 0x47://ld b,a
 		st->b=st->a;
@@ -681,7 +684,7 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,l");
 		break;
 	case 0x7e: //ld a,(hl)
-		st->h<<8|st->l;
+		tmp=st->h<<8|st->l;
 		st->a=ram[tmp];
 		printf("ld a,(hl)");
 		break;
@@ -1368,6 +1371,9 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xcb: //PREFIX CB
 		//IX CBPREF IX CBPREF IX CBPR EF IXCBPR EFIX CBPR
+		fetch8(st,rom,&tmp8,ram);
+		printf("0x%.2x: ",tmp8);
+		decexecCB(st,rom,&tmp8,ram);
 		break;
 	case 0xcc: //call z,m16
 		fetch16(st,rom,&tmp,ram);

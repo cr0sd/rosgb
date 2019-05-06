@@ -13,6 +13,26 @@ uint32_t openwindow(uint8_t*str)
 	if(tp)im.t=tp->pix;
 	return tp==NULL;
 }
+uint32_t updatejoypad(uint8_t*ram)
+{
+	uint8_t jp=0;
+	if(ram[0xff00]==0x20)//R L U D
+	{
+		jp|=(tigrKeyHeld(tp,TK_RIGHT)!=0);
+		jp|=(tigrKeyHeld(tp,TK_LEFT )!=0)<<1;
+		jp|=(tigrKeyHeld(tp,TK_UP   )!=0)<<2;
+		jp|=(tigrKeyHeld(tp,TK_DOWN )!=0)<<3;
+		ram[0xff00]=jp;
+	}
+	else if(ram[0xff00]==0x10)//A B SEL START
+	{
+		jp|=(tigrKeyHeld(tp,'Z'      )!=0);
+		jp|=(tigrKeyHeld(tp,'X'      )!=0)<<1;
+		jp|=(tigrKeyHeld(tp,TK_SPACE )!=0)<<2;
+		jp|=(tigrKeyHeld(tp,TK_RETURN)!=0)<<3;
+		ram[0xff00]=jp;
+	}
+}
 uint32_t updatewindow(uint8_t*ram)
 {
 	static uint32_t delay=0;
