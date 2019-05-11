@@ -2,11 +2,11 @@
 #include<stdlib.h>
 #include<inttypes.h>
 
-#define PRINTING //cl file.c /UPRINTING
+// #define PRINTING //cl file.c /UPRINTING
 
-#ifndef PRINTING
-#define printf(x)
-#endif
+// #ifndef PRINTING
+// #define printf(x)
+// #endif
 
 #define F_Z	0x80//zero flag
 #define F_N	0x40//subtract
@@ -233,16 +233,23 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld e,%.2xh",st->e);
 		break;
 	case 0x1f: //rra //TODO: fix behavior of rotate
-		if(st->a&0x01)st->f|=F_C;else st->f&=~F_C;//C
-		st->f&=F_C;//Z 0,H 0,N 0
-		tmp=st->a;
-		tmp8=st->f&F_C;
-		_asm mov cl,0xff
-		_asm add cl,[tmp8] ;set CF (?)
-		_asm ror byte ptr [tmp],1
-		st->a=(uint8_t)tmp;
-		printf("rra ; %.2xh",(uint8_t)tmp);
-		break;
+		{
+			//create new call stack
+			uint8_t cf=st->f&F_C;
+			if(st->a&0x01)st->f|=F_C;else st->f&=~F_C;//C
+			st->f&=F_C;//Z 0,H 0,N 0
+			tmp=st->a;
+			tmp8=st->f&F_C;
+			
+			if(cf)_asm stc //set CF
+			else _asm clc
+			_asm rcr byte ptr [tmp],1
+			
+			
+			st->a=(uint8_t)tmp;
+			printf("rra ; %.2xh",(uint8_t)tmp);
+			break;
+		}
 	case 0x20://jr nz m8 (signed)
 		fetch8(st,rom,&tmp,ram);
 		if(!(st->f&F_Z))

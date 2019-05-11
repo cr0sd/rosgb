@@ -4,11 +4,11 @@
 #include<assert.h>
 
 #define VIDEO
-#define PRINTING
+// #define PRINTING
 
-#ifndef PRINTING
-#define printf(x)
-#endif
+// #ifndef PRINTING
+// #define printf(x)
+// #endif
 
 #define F_Z	0x80//zero flag
 #define F_N	0x40//subtract
