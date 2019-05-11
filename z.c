@@ -25,8 +25,14 @@ extern uint32_t updatewindow(uint8_t*);
 extern uint32_t closewindow();
 extern uint32_t updatejoypad(uint8_t*);
 #endif
+typedef struct St //cpu state
+{
+	uint8_t a,f,b,c,d,e,h,l; //regs signed, flags unsigned
+	uint16_t sp,pc;
+}St;
 int main(int c,char **v)
 {
+	St *stp=st;
 	uint8_t op;
 	uint8_t *ram;
 	FILE *f=fopen(v[1],"rb");
@@ -86,7 +92,14 @@ int main(int c,char **v)
 	for(;;)
 	{
 		updatejoypad(ram);
-		ram[0xff44]=0x90;
+		ram[0xff44]+=1;//CURLINE (VBLANK:144-153)
+		// if(ram[0xff44]==144 )//&& ram[0xffff])
+		// {
+			// stp->sp-=2;//push pc, jump to 0040h interrupt
+			// ram[stp->sp]=stp->pc&0x00ff;
+			// ram[stp->sp+1]=stp->pc>>8;
+			// stp->pc=0x0040;
+		// }
 		
 		printf("\n[%#10.8x]%#5.2x: ",st[10]|st[11]<<8,rom[st[10]|st[11]<<8]);
 		fetch8(st,rom,&op,ram);

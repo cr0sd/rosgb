@@ -25,6 +25,29 @@ void decexecCB(uint8_t *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	uint8_t tmp8;
 	St *stp=st;//'union'
 	
+	//30h - 37h SWAP
+	if(*op>=0x30 && *op<=0x37)
+	{
+		tmp8=(*op&0xf)%8;
+		if(tmp8==6)tmp=ram[stp->h<<8|stp->l];
+		else tmp=st[cbreg[tmp8]];//reg
+		
+		_asm mov al,byte ptr [tmp]//x86 allows this in a few lines
+		_asm ror al,4
+		_asm mov byte ptr [tmp],al//why doesn't C support this?
+		
+		if(tmp8==6)ram[stp->h<<8|stp->l]=(uint8_t)tmp;
+		else st[cbreg[tmp8]]=(uint8_t)tmp;//reg
+		
+		stp->f&=~F_C;//C
+		stp->f&=~F_N;//N
+		stp->f&=~F_H;//H
+		if(!(uint8_t)tmp)stp->f|=F_Z;//Z
+		else stp->f&=~F_Z;
+		
+		printf("swap %s ; %.2xh",cbrnm[(*op&0xf)%8],(uint8_t)tmp);
+	}
+	
 	//40h - 7fh BIT
 	if(*op>=0x40 && *op<=0x80)//why are bitwise ops such low pri??
 	{

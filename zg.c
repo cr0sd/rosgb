@@ -15,7 +15,7 @@ uint32_t openwindow(uint8_t*str)
 }
 uint32_t updatejoypad(uint8_t*ram)
 {
-	uint8_t jp=0;
+	static uint8_t jp=0;
 	if(ram[0xff00]==0x20)//R L U D
 	{
 		jp|=(tigrKeyHeld(tp,TK_RIGHT)!=0);

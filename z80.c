@@ -136,7 +136,7 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		if(st->a&0x01)st->f|=F_C;else st->f&=~F_C;//C
 		st->f&=F_C;//N 0,Z 0,H 0
 		tmp8=st->a;
-		_asm rcr tmp8,1
+		_asm ror tmp8,1
 		st->a=tmp8;
 		printf("rrca ;%.2xh",tmp8);
 		break;
@@ -232,13 +232,16 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		fetch8(st,rom,&st->e,ram);
 		printf("ld e,%.2xh",st->e);
 		break;
-	case 0x1f: //rra
+	case 0x1f: //rra //TODO: fix behavior of rotate
 		if(st->a&0x01)st->f|=F_C;else st->f&=~F_C;//C
 		st->f&=F_C;//Z 0,H 0,N 0
 		tmp=st->a;
-		_asm ror tmp,1
-		st->a=tmp;
-		printf("rra");
+		tmp8=st->f&F_C;
+		_asm mov cl,0xff
+		_asm add cl,[tmp8] ;set CF (?)
+		_asm ror byte ptr [tmp],1
+		st->a=(uint8_t)tmp;
+		printf("rra ; %.2xh",(uint8_t)tmp);
 		break;
 	case 0x20://jr nz m8 (signed)
 		fetch8(st,rom,&tmp,ram);
@@ -426,7 +429,7 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		st->f=(st->f&F_C)?st->f&~F_C:st->f|F_C;//cpl C
 		//Z -
 		st->f&=~(F_N|F_H);//N 0,H 0
-		printf("ccf");
+		printf("ccf ;%.2x",st->f&F_C);
 		break;
 	case 0x40://ld b,b
 		printf("ld b,b");
