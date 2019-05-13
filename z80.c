@@ -18,6 +18,7 @@ typedef struct St //cpu state
 	uint16_t sp,pc;
 }St;
 
+extern void updatejoypad(uint8_t*ram);
 extern void decexecCB(St*,uint8_t*,uint8_t*,uint8_t*);
 
 void fetch8(St *st,uint8_t *rom,uint8_t *u8,uint8_t *ram)
@@ -29,6 +30,16 @@ void fetch16(St *st,uint8_t *rom,uint16_t *u16,uint8_t *ram)
 	*u16=rom[st->pc]|rom[st->pc+1]<<8;
 	st->pc+=2;
 }
+
+// _ram Allow access to read/write to ram
+// through a filter for interrupts
+void write_ram(uint16_t addr,uint8_t val,uint8_t *ram)
+{
+	ram[addr]=val;
+	if(addr=0xff00)updatejoypad(ram);
+	return ram+*(uint8_t*)&addr;
+}
+
 void romhexdump(uint8_t *rom)
 {
 	for(uint16_t i=0;i<0xffff;i++)printf("%.2x ",rom[i]);
@@ -46,11 +57,13 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld bc,%.4xh",st->b<<8|st->c);
 		break;
 	case 0x02://ld (bc),a
-		ram[st->b<<8|st->c]=st->a;
+		// *_ram(st->b<<8|st->c,ram)=st->a;
+		// ram[st->b<<8|st->c]=st->a;
+		write_ram(st->b<<8|st->c,st->a,ram);
 		printf("ld (bc),a ;(%.4xh)=%.2xh",st->b<<8|st->c,st->a);
 		break;
 	case 0x03://inc bc
-		tmp=(st->b<<8|st->c)+1; //lsh lower pri than add
+		tmp=((uint16_t)st->b<<8|st->c)+1; //lsh lower pri than add
 		st->b=tmp>>8;
 		st->c=tmp&0x00ff;
 		printf("inc bc ;%.4xh",st->b<<8|st->c);
@@ -58,18 +71,20 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0x04://inc b
 		//flags:
 		st->f&=~F_N;//N 0
-		if(st->b&0xf==0xf)st->f|=F_H;else st->f&=~F_H;//H
+		if(st->b&0xf==0xf)st->f|=F_H;//H
+		else st->f&=~F_H;
 		st->b++;
-		if(st->b==0)st->f|=F_Z;else st->f&=~F_Z;//Z
-		//C -
+		if(st->b==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		printf("inc b");
 		break;
 	case 0x05://dec b
-		if(st->b&0x10&&!(st->b&0x08))st->f|=F_H;else st->f&=~F_H;//borrow H
+		if(st->b&0x10&&!(st->b&0x08))st->f|=F_H;//H
+		else st->f&=~F_H;
 		st->b--;
 		if(st->b==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f|=F_N;//N
-		//C -
 		printf("dec b");
 		break;
 	case 0x06://ld b,m8
@@ -88,7 +103,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x08://ld (m16),sp
 		fetch16(st,rom,&tmp,ram);
-		ram[tmp]=st->sp;
+		// ram[tmp]=st->sp;
+		write_ram(tmp,st->sp,ram);
 		printf("ld (%.4xh),sp",tmp);
 		break;
 	case 0x09://add hl,bc
@@ -108,25 +124,28 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,(bc)");
 		break;
 	case 0x0b: //dec bc
-		tmp=(st->b<<8|st->c)-1;
+		tmp=((uint16_t)st->b<<8|st->c)-1;
 		st->b=tmp>>8;
 		st->c=(uint8_t)tmp;
 		printf("dec bc");
 		break;
 	case 0x0c: //inc c
 		st->c++;
-		printf("inc c");
-		if(st->c==0)st->f|=F_Z;else st->f&=~F_Z;//Z
+		if(st->c==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f&=~F_N;//N
-		if(st->c&0xf==0xf)st->f|=F_H;else st->f&=~F_H;//H
+		if(st->c&0xf==0xf)st->f|=F_H;//H
+		else st->f&=~F_H;
+		printf("inc c");
 		break;
 	case 0x0d: //dec c
-		if(st->c&0x10&&!(st->c&0x08))st->f|=F_H;else st->f&=~F_H;//borrow H
+		if(st->c&0x10&&!(st->c&0x08))st->f|=F_H;//H
+		else st->f&=~F_H;
 		st->c--;
 		if(st->c==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f|=F_N;//N
-		//C -
-		printf("dec c");
+		printf("dec c ;%.2xh",st->c);
 		break;
 	case 0x0e: //ld c,m8
 		fetch8(st,rom,&st->c,ram);
@@ -151,28 +170,32 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld de,%.4xh",tmp);
 		break;
 	case 0x12://ld (de),a
-		ram[st->d<<8|st->e]=st->a;
+		// ram[st->d<<8|st->e]=st->a;
+		write_ram(st->d<<8|st->e,st->a,ram);
 		printf("ld (de),a");
 		break;
 	case 0x13://inc de
-		tmp=(uint16_t)st->d<<8|st->e+1;
+		tmp=((uint16_t)st->d<<8|st->e)+1;
 		st->d=tmp>>8;
 		st->e=tmp&0x00ff;
 		printf("inc de");
 		break;
 	case 0x14://inc d
 		st->d++;
-		printf("inc d");
-		if(st->d==0)st->f|=F_Z;else st->f&=~F_Z;//Z
+		if(st->d==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f&=~F_N;//N
-		if(st->d&0xf==0xf)st->f|=F_H;else st->f&=~F_H;//H
+		if(st->d&0xf==0xf)st->f|=F_H;//H
+		else st->f&=~F_H;
+		printf("inc d");
 		break;
 	case 0x15://dec d
-		if(st->d&0x10&&!(st->d&0x08))st->f|=F_H;else st->f&=~F_H;//borrow H
+		if(st->d&0x10&&!(st->d&0x08))st->f|=F_H;//H
+		else st->f&=~F_H;
 		st->d--;
 		if(st->d==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f|=F_N;//N
-		//C -
 		printf("dec d");
 		break;
 	case 0x16://ld d,m8
@@ -208,24 +231,27 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,(de)");
 		break;
 	case 0x1b: //dec de
-		tmp=(st->d<<8|st->e)-1;
+		tmp=((uint16_t)st->d<<8|st->e)-1;
 		st->d=tmp>>8;
 		st->e=(uint8_t)tmp;
 		printf("dec de");
 		break;
 	case 0x1c: //inc e
 		st->e++;
-		printf("inc e");
-		if(st->e==0)st->f|=F_Z;else st->f&=~F_Z;//Z
+		if(st->e==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f&=~F_N;//N
-		if(st->e&0xf==0xf)st->f|=F_H;else st->f&=~F_H;//H
+		if(st->e&0xf==0xf)st->f|=F_H;//H
+		else st->f&=~F_H;
+		printf("inc e");
 		break;
 	case 0x1d: //dec e
-		if(st->e&0x10&&!(st->e&0x08))st->f|=F_H;else st->f&=~F_H;//borrow H
+		if(st->e&0x10&&!(st->e&0x08))st->f|=F_H;
+		else st->f&=~F_H;//borrow H
 		st->e--;
 		if(st->e==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f|=F_N;//N
-		//C -
 		printf("dec c");
 		break;
 	case 0x1e: //ld e,m8
@@ -264,14 +290,15 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x22://ld (hli),a
 		tmp=(uint16_t)st->h<<8|st->l;
-		ram[tmp]=st->a;
+		// ram[tmp]=st->a;
+		write_ram(tmp,st->a,ram);
 		tmp++;
 		st->h=tmp>>8;
 		st->l=tmp&0x00ff;
 		printf("ld (hli),a ;%.4x",tmp);
 		break;
 	case 0x23://inc hl
-		tmp=(st->h<<8|st->l)+1;
+		tmp=((uint16_t)st->h<<8|st->l)+1;
 		st->h=tmp>>8;
 		st->l=(uint8_t)tmp;//trunc
 		printf("inc hl");
@@ -279,16 +306,19 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0x24: //inc h
 		st->h++;
 		printf("inc h");
-		if(st->h==0)st->f|=F_Z;else st->f&=~F_Z;//Z
+		if(st->h==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f&=~F_N;//N
-		if(st->h&0xf==0xf)st->f|=F_H;else st->f&=~F_H;//H
+		if(st->h&0xf==0xf)st->f|=F_H;//H
+		else st->f&=~F_H;
 		break;
 	case 0x25: //dec h
-		if(st->h&0x10&&!(st->h&0x08))st->f|=F_H;else st->f&=~F_H;//borrow H
+		if(st->h&0x10&&!(st->h&0x08))st->f|=F_H;
+		else st->f&=~F_H;//borrow H
 		st->h--;
 		if(st->h==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
 		st->f|=F_N;//N
-		//C -
 		printf("dec h");
 		break;
 	case 0x26://ld h,m8
@@ -326,17 +356,25 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,(hli) ;(%.4xh)",tmp);
 		break;
 	case 0x2b: //dec hl
-		tmp=(st->h<<8|st->l)-1;
+		tmp=((uint16_t)st->h<<8|st->l)-1;
 		st->h=tmp>>8;
 		st->l=(uint8_t)tmp;
 		printf("dec hl");
 		break;
 	case 0x2c: //inc l
 		st->l++;
+		if(st->l==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
+		st->f&=~F_N;//N
 		printf("inc l");
 		break;
 	case 0x2d: //dec l
+		if(st->l&0x10&&!(st->l&0x08))st->f|=F_H;
+		else st->f&=~F_H;//H
 		st->l--;
+		if(st->l==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
+		st->f|=F_N;//N
 		printf("dec l");
 		break;
 	case 0x2e: //ld l,m8
@@ -361,7 +399,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x32://ld (hld),a ld (hl),a ; dec hl
 		tmp=(uint16_t)st->h<<8|st->l;
-		ram[tmp]=st->a;
+		// ram[tmp]=st->a;
+		write_ram(tmp,st->a,ram);
 		tmp--;
 		st->h=tmp>>8;
 		st->l=tmp&0x00ff;
@@ -373,17 +412,20 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x34://inc (hl)
 		tmp=st->h|st->l<<8;
-		ram[tmp]++;
+		// ram[tmp]++;
+		write_ram(tmp,ram[tmp]+1,ram);
 		printf("inc (hl) ;%.4xh",ram[tmp]);
 		break;
 	case 0x35://dec (hl)
 		tmp=st->h|st->l<<8;
-		ram[tmp]--;
+		// ram[tmp]--;
+		write_ram(tmp,ram[tmp]-1,ram);
 		printf("dec (hl) ;%.4xh",ram[tmp]);
 		break;
 	case 0x36://ld (hl),m8
 		fetch8(st,rom,&tmp,ram);
-		ram[st->h<<8|st->l]=(uint8_t)tmp;
+		// ram[st->h<<8|st->l]=(uint8_t)tmp;
+		write_ram(st->h<<8|st->l,(uint8_t)tmp,ram);
 		printf("ld (hl),%.2xh",(uint8_t)tmp);
 		break;
 	case 0x37://scf
@@ -418,11 +460,15 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x3c: //inc a
 		st->a++;
+		if(st->a==0)st->f|=F_Z;//Z
+		else st->f&=~F_Z;
+		st->f&=~F_N;//N
 		printf("inc a");
 		break;
 	case 0x3d: //dec a
 		st->a--;
 		if(!st->a)st->f|=F_Z;
+		else st->f&=~F_Z;
 		st->f|=F_N;
 		//F_H
 		printf("dec a");
@@ -632,32 +678,38 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x70: //ld (hl),b
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->b;
+		// ram[tmp]=st->b;
+		write_ram(tmp,st->b,ram);
 		printf("ld (hl),b ;ld (%.4xh),%.2xh",tmp,st->b);
 		break;
 	case 0x71: //ld (hl),c
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->c;
+		// ram[tmp]=st->c;
+		write_ram(tmp,st->c,ram);
 		printf("ld (hl),c");
 		break;
 	case 0x72: //ld (hl),d
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->d;
+		// ram[tmp]=st->d;
+		write_ram(tmp,st->d,ram);
 		printf("ld (hl),d");
 		break;
 	case 0x73: //ld (hl),e
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->e;
+		// ram[tmp]=st->e;
+		write_ram(tmp,st->e,ram);
 		printf("ld (hl),e");
 		break;
 	case 0x74: //ld (hl),h
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->h;
+		// ram[tmp]=st->h;
+		write_ram(tmp,st->h,ram);
 		printf("ld (hl),h");
 		break;
 	case 0x75: //ld (hl),l
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->l;
+		// ram[tmp]=st->l;
+		write_ram(tmp,st->l,ram);
 		printf("ld (hl),l");
 		break;
 	case 0x76: //halt
@@ -666,7 +718,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0x77: //ld (hl),a
 		tmp=st->h<<8|st->l;
-		ram[tmp]=st->a;
+		// ram[tmp]=st->a;
+		write_ram(tmp,st->a,ram);
 		printf("ld (hl),a ;ld (%.4xh),%.2xh",tmp,st->a);
 		break;
 	case 0x78: //ld a,b
@@ -1329,16 +1382,20 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		if(!(st->f&F_Z))
 		{
 			st->sp-=2;
-			ram[st->sp]  =(uint8_t)st->pc;//push pc
-			ram[st->sp+1]=st->pc>>8;
+			// ram[st->sp]  =(uint8_t)st->pc;//push pc
+			// ram[st->sp+1]=st->pc>>8;
+			write_ram(st->sp,(uint8_t)st->pc,ram);
+			write_ram(st->sp+1,st->pc>>8,ram);
 			st->pc=tmp;
 		}
 		printf("call nz,%.4xh%s",tmp,!st->a?" ;skipped":"");
 		break;
 	case 0xc5://push bc
 		st->sp-=2;
-		ram[st->sp]=st->c;//little-endian
-		ram[st->sp+1]=st->b;
+		// ram[st->sp]=st->c;//little-endian
+		// ram[st->sp+1]=st->b;
+		write_ram(st->sp,st->c,ram);
+		write_ram(st->sp+1,st->b,ram);
 		printf("push bc ;%.4xh",st->b<<8|st->c);
 		break;
 	case 0xc6://add a,m8
@@ -1355,8 +1412,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0xc7: //rst 00h (call 0000h + 00h)
 		// fetch16(st,rom,&tmp,ram);
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0000;
 		printf("rst 00h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1390,18 +1449,22 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		if(st->f&F_Z)
 		{
 			st->sp-=2;
-			ram[st->sp]  =(uint8_t)st->pc;//push pc
-			ram[st->sp+1]=st->pc>>8;
+			// ram[st->sp]  =(uint8_t)st->pc;//push pc
+			// ram[st->sp+1]=st->pc>>8;
+			write_ram(st->sp,(uint8_t)st->pc,ram);
+			write_ram(st->sp+1,st->pc>>8,ram);
 			st->pc=tmp;
 		}
 		printf("call z,%.4xh%s",tmp,!st->a?"":" ;skipped");
 		break;
 	case 0xcd: //call m16
-		//push ret val to stack!
+		//push ret addr to stack!
 		fetch16(st,rom,&tmp,ram);
 		st->sp-=2;//alloc
-		ram[st->sp]=(uint16_t)st->pc&0x00ff;
-		ram[st->sp+1]=(uint16_t)st->pc>>8;
+		// ram[st->sp]=(uint16_t)st->pc&0x00ff;
+		// ram[st->sp+1]=(uint16_t)st->pc>>8;
+		write_ram(st->sp,(uint16_t)st->pc&0x00ff,ram);
+		write_ram(st->sp+1,(uint16_t)st->pc>>8,ram);
 		st->pc=tmp;
 		printf("call %.4xh ;ret to %.4xh",st->pc,ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1420,8 +1483,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0xcf: //rst 08h (call 0000h + 00h)
 		// fetch16(st,rom,&tmp,ram);
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0008;
 		printf("rst 08h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1449,16 +1514,20 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		if(!(st->f&F_C))
 		{
 			st->sp-=2;
-			ram[st->sp]  =(uint8_t)st->pc;//push pc
-			ram[st->sp+1]=st->pc>>8;
+			// ram[st->sp]  =(uint8_t)st->pc;//push pc
+			// ram[st->sp+1]=st->pc>>8;
+			write_ram(st->sp,(uint8_t)st->pc,ram);
+			write_ram(st->sp+1,st->pc>>8,ram);
 			st->pc=tmp;
 		}
 		printf("call nc,%.4xh%s",tmp,st->f&F_C?" ;skipped":"");
 		break;
 	case 0xd5://push de
 		st->sp-=2;
-		ram[st->sp]=st->e;//little-endian
-		ram[st->sp+1]=st->d;
+		// ram[st->sp]=st->e;//little-endian
+		// ram[st->sp+1]=st->d;
+		write_ram(st->sp,st->e,ram);
+		write_ram(st->sp+1,st->d,ram);
 		printf("push de ;%.4xh",st->d<<8|st->e);
 		break;
 	case 0xd6://sub m8
@@ -1476,8 +1545,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0xd7://rst 10h (call 0000h + 10h)
 		// fetch16(st,rom,&tmp,ram);
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0010;
 		printf("rst 10h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1493,7 +1564,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		//pop ret val from stack!
 		st->pc=ram[st->sp]|ram[st->sp+1]<<8;
 		st->sp+=2;
-		//enable interrupts
+		// ram[0xffff]=0x1f;//enable all interrupts
+		write_ram(0xffff,0x1f,ram);
 		printf("reti");
 		break;
 	case 0xda: //jp c,m16
@@ -1506,8 +1578,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		if(st->f&F_C)
 		{
 			st->sp-=2;
-			ram[st->sp]  =(uint8_t)st->pc;//push pc
-			ram[st->sp+1]=st->pc>>8;
+			// ram[st->sp]  =(uint8_t)st->pc;//push pc
+			// ram[st->sp+1]=st->pc>>8;
+			write_ram(st->sp,(uint8_t)st->pc,ram);
+			write_ram(st->sp+1,st->pc>>8,ram);
 			st->pc=tmp;
 		}
 		printf("call c,%.4xh%s",tmp,!st->a?"":" ;skipped");
@@ -1525,14 +1599,17 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 	case 0xdf: //rst 18h (call 0000h + 00h)
 		// fetch16(st,rom,&tmp,ram);
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0018;
 		printf("rst 18h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
 	case 0xe0://ldh (m8),a ---> ld (ff00 + m8),a
 		fetch8(st,rom,&tmp,ram);
-		ram[0xff00|tmp]=st->a;
+		// ram[0xff00|tmp]=st->a;
+		write_ram(0xff00|tmp,st->a,ram);
 		printf("ldh (%.2xh),a ;ld (ff00h+%.2xh),a",tmp,tmp);
 		break;
 	case 0xe1://pop hl
@@ -1543,13 +1620,16 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xe2://ld (c),a
 		// fetch8(st,rom,&tmp8,ram);
-		ram[0xff00|(uint16_t)st->c]=st->a;
+		// ram[0xff00|(uint16_t)st->c]=st->a;
+		write_ram(0xff00|(uint16_t)st->c,st->a,ram);
 		printf("ld (c),a");
 		break;
 	case 0xe5://push hl
 		st->sp-=2;
-		ram[st->sp]=st->h;
-		ram[st->sp+1]=st->l;
+		// ram[st->sp]=st->h;
+		// ram[st->sp+1]=st->l;
+		write_ram(st->sp,st->h,ram);
+		write_ram(st->sp+1,st->l,ram);
 		printf("push hl ;%.4xh",st->h|st->l<<8);
 		break;
 	case 0xe6://and c ;and a,c
@@ -1563,8 +1643,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xe7://rst 20h (call 0000h + 20h)
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0020;
 		printf("rst 20h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1586,7 +1668,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xea: //ld (m16),a
 		fetch16(st,rom,&tmp,ram);
-		ram[tmp]=st->a;
+		// ram[tmp]=st->a;
+		write_ram(tmp,st->a,ram);
 		printf("ld (%.4xh),a",tmp);
 		break;
 	case 0xee: //xor m8
@@ -1601,8 +1684,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xef: //rst 28h (call 0000h + 00h)
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0028;
 		printf("rst 28h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1622,13 +1707,16 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,(c)");
 		break;
 	case 0xf3://di
-		ram[0xffff]=0x00;//disable all int's
+		// ram[0xffff]=0x00;//disable all int's
+		write_ram(0xffff,0x00,ram);
 		printf("di");
 		break;
 	case 0xf5://push af
 		st->sp-=2;
-		ram[st->sp]=st->a;
-		ram[st->sp+1]=st->f;
+		// ram[st->sp]=st->a;
+		// ram[st->sp+1]=st->f;
+		write_ram(st->sp,st->a,ram);
+		write_ram(st->sp+1,st->f,ram);
 		printf("push af ;%.4xh",st->a|st->f<<8);
 		break;
 	case 0xf6://or m8
@@ -1643,8 +1731,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xf7://rst 30h (call 0000h + 30h)
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0030;
 		printf("rst 30h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;
@@ -1672,7 +1762,8 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		printf("ld a,(%.2xh)",tmp);
 		break;
 	case 0xfb: //ei
-		ram[0xffff]=0x1f;//enable all int's
+		// ram[0xffff]=0x1f;//enable all int's
+		write_ram(0xffff,0x1f,ram);
 		printf("ei");
 		break;
 	case 0xfe: //cp m8
@@ -1688,8 +1779,10 @@ void decexec(St *st,uint8_t *rom,uint8_t *op,uint8_t *ram)
 		break;
 	case 0xff: //rst 38h (call 0000h + 00h)
 		st->sp-=2;//alloc
-		ram[st->sp]=st->pc&0x00ff;
-		ram[st->sp+1]=st->pc>>8;
+		// ram[st->sp]=st->pc&0x00ff;
+		// ram[st->sp+1]=st->pc>>8;
+		write_ram(st->sp,st->pc&0x00ff,ram);
+		write_ram(st->sp+1,st->pc>>8,ram);
 		st->pc=0x0038;
 		printf("rst 38h ;ret to %.4xh",ram[st->sp]|ram[st->sp+1]<<8);
 		break;

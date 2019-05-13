@@ -91,8 +91,12 @@ int main(int c,char **v)
 	// for(int i=0;i<70&&((st[10]|st[11]<<8)<romsize);i++)
 	for(;;)
 	{
-		updatejoypad(ram);
 		ram[0xff44]+=1;//CURLINE (VBLANK:144-153)
+		// updatejoypad(ram);
+		
+		
+		
+		
 		// if(ram[0xff44]==144 )//&& ram[0xffff])
 		// {
 			// stp->sp-=2;//push pc, jump to 0040h interrupt
@@ -116,6 +120,20 @@ int main(int c,char **v)
 	printf("f: (%x) Z:%x N:%x H:%x C:%x\n",st[1]>>4,(st[1]&F_Z)>>4,(st[1]&F_N)>>4,(st[1]&F_H)>>4,(st[1]&F_C)>>4);
 	printf("STACK: ");for(int i=0xfffe;i>0xffee;i--)printf("%.2x  ",ram[i]);
 	printf("\nTILE 0(RAM): ");for(int i=0;i<8;i++)printf("%.2x ",ram[0x8000+i]);
+	// {
+		// printf("\nTilemap:%.2x,%.2x\n",(uint8_t)ram[0x9800],(uint8_t)ram[0x9801]);
+		// FILE *fp=fopen("tilemap.txt","w");
+		// for(int i=0;i<0x800;i++)//lines
+		// {
+			// fprintf(fp,"%.2x,",ram[0x9800+i]);
+			// if(i%32==0 && i!=0)fputc('\n',fp);
+		// }
+		// // fwrite(ram+0x9800,1,0x800,fp);
+		// fclose(fp);
+	// }
+	printf("\nOAM Sprite 0  Tile: %.2x X: %.2x Y: %.2x",ram[0xfe02],ram[0xfe00],ram[0xfe01]);
+	printf("\nOAM Sprite 1  Tile: %.2x X: %.2x Y: %.2x",ram[0xfe06],ram[0xfe04],ram[0xfe05]);
+	printf("\nOAM Sprite 16 Tile: %.2x X: %.2x Y: %.2x",ram[0xfe12],ram[0xfe10],ram[0xfe11]);
 	free(ram);
 	free(rom);
 	#ifdef VIDEO
