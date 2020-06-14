@@ -47,42 +47,42 @@ int main(int c,char **v)
 	uint32_t romsize;
 	st[8]=0xfe;//sp
 	st[9]=0xff;
-	
+
 	uint32_t nclocks=clock();
-	
+
 	ram=malloc(0x10000);
 	if(!ram)return 3;
-	
+
 	if(c<2 || !f)return 1;
 	// fseek(f,0x100,SEEK_SET);
-	
+
 	//copy to memory
 	fseek(f,0,SEEK_END);
 	romsize=ftell(f);
 	if(0x8000>romsize)romsize=0x8000;
 	rom=malloc(romsize);
-	
+
 	if(!rom)return 2;
-	
+
 	rewind(f);
 	fread(rom,1,romsize,f);
 	printf("Loaded ROM \'%s\' (%u B)\n",v[1],romsize);
-	
-	
+
+
 	printf("ROM Size: %ukB\n",32<<rom[0x148]);
 	printf("RAM Size: %ukB\n",16<<rom[0x149]*2);
-	
+
 	if(c>2 && strcmp(v[2],"-d")==0)
 	{
 		romhexdump(rom);
 		return 0;
 	}
-	
+
 	st[10]=0x00;//0x100
 	st[11]=0x01;
-	
-	
-	
+
+
+
 	//load program into RAM
 	for(int i=0;i<0x8000;i++)
 	{
@@ -90,18 +90,18 @@ int main(int c,char **v)
 		assert(ram[i]==rom[i]);
 	}
 	printf("Loaded 8000h (32768) bytes into RAM\n");
-	
-	
+
+
 	#ifdef VIDEO
 	openwindow(rom+0x134);
 	#endif
-	
+
 	ram[0xff4f]=0;//VRAM bank
 	st[12]=1;//IME enable interrupts
-	
+
 	// for(int i=0;i<70&&((st[10]|st[11]<<8)<romsize);i++)
-	
-	
+
+
 	//-----CPU CYCLE LOOP-----
 	for(;;)
 	{
@@ -109,14 +109,14 @@ int main(int c,char **v)
 		if(updatewindow(ram,stp))break;
 		#endif
 		if(paused)continue;
-		
+
 		//Control Registers--
 		ram[0xff44]+=1;//CURLINE (VBLANK INT AT:144-153)
 		//ram[0xff05]+=1;//TIMA (TIMER INT AT OVERFLOW)
 		// if(!ram[0xff05])ram[0xff05]=ram[0xff06];
 		ram[0xff41]=(ram[0xff41]+1)%4;//V-BLANK
-		
-		
+
+
 		//Interrupts--
 		//if(ram[0xff44]==144 && ram[0xffff] && st[12])//V-BLANK INT
 		//{
@@ -125,14 +125,14 @@ int main(int c,char **v)
 		//	write_ram(stp->sp+1,stp->pc>>8,stp,ram);
 		//	stp->pc=0x0040;
 		//}
-		
+
 		//if(stp->pc==0xff82)MessageBoxA(NULL,"FF82","-",MB_OK);
-		
+
 		printf("\n[%#10.8x]%#5.2x: ",st[10]|st[11]<<8,rom[st[10]|st[11]<<8]);
 		fetch8(st,rom,&op,ram);
 		decexec(st,rom,&op,ram);
 	}
-	
+
 	printf("\n----------\nCPU State:");
 	for(int i=0;i<8;i++)printf("\n%c=%12u (%#4.2x)","afbcdehl"[i],st[i],st[i]);
 	printf("\nsp: %.4x\npc: %.4x\n",st[8]|st[9]<<8,st[10]|st[11]<<8);
